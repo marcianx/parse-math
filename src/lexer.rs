@@ -16,15 +16,34 @@ lazy_static! {
 // These two must be in the same order.
 const OPS_SINGLE: [char; 9] = ['+', '-', '*', '/', '^', '!', '=', '(', ')'];
 
-
+/// Types of tokens.
 #[derive(Debug, PartialEq)]
-pub enum Token<'a> {
+pub enum TokenType<'a> {
     Number(f64),
     Ident(&'a str),
     OpSingle(char),
     End,
 }
+use self::TokenType::*;
 
+/// Token type with a text position number.
+#[derive(Debug)]
+pub struct Token<'a> {
+    pub typ: TokenType<'a>,
+    pub pos: u32,
+}
+
+impl<'a> PartialEq for Token<'a> {
+    fn eq(&self, other: &Self) -> bool { self.typ == other.typ }
+}
+
+impl<'a> PartialEq<TokenType<'a>> for Token<'a> {
+    fn eq(&self, other: &TokenType<'a>) -> bool { self.typ == *other }
+}
+
+impl<'a> PartialEq<Token<'a>> for TokenType<'a> {
+    fn eq(&self, other: &Token<'a>) -> bool { *self == other.typ }
+}
 
 /// Lexer class that exposes an iterator for easy token consumption.
 #[derive(Clone)]
@@ -68,7 +87,7 @@ impl<'a> Lexer<'a> {
             loop {
                 ch = match iter.next() {
                     // End of stream
-                    None => return Ok(Token::End),
+                    None => return Ok(Token { typ: End, pos: self.pos }),
                     Some(ch) => ch
                 };
                 // Skip whitespace and increment pos
@@ -81,16 +100,17 @@ impl<'a> Lexer<'a> {
         // Check single-character tokens.
         // NOTE: Relocate this to the end if any of these become prefixes of longer tokens.
         if OPS_SINGLE.contains(&ch) {
+            let token = Token { typ: OpSingle(ch), pos: self.pos };
             self.text = &self.text[1..];
             self.pos += 1;
-            Ok(Token::OpSingle(ch))
+            Ok(token)
         } else if let Some((0, n)) = REGEX_NUMBER.find(self.text) {
-            let token = Token::Number(try!(FromStr::from_str(&self.text[..n])));
+            let token = Token { typ: Number(try!(FromStr::from_str(&self.text[..n]))), pos: self.pos };
             self.text = &self.text[n..];
             self.pos += n as u32;
             Ok(token)
         } else if let Some((0, n)) = REGEX_IDENT.find(self.text) {
-            let token = Token::Ident(&self.text[..n]);
+            let token = Token { typ: Ident(&self.text[..n]), pos: self.pos };
             self.text = &self.text[n..];
             self.pos += n as u32;
             Ok(token)
@@ -114,7 +134,7 @@ impl<'a> iter::Iterator for Lexer<'a> {
             return None;
         }
         match self.next_token() {
-            Ok(Token::End) => None,
+            Ok(Token { typ: End, pos: _ }) => None,
             res => Some(res),
         }
     }
@@ -139,6 +159,7 @@ mod test {
     #[test]
     fn test_print_tokens() {
         use super::{Lexer, Token};
+        use super::TokenType::Ident;
 
         let text = "log(3x!!+4)- 5x zy^2^3";
         let lexer = Lexer::new(text);
@@ -147,13 +168,15 @@ mod test {
         let vec: Vec<_> = lexer.map(|res| {
             res.unwrap_or_else(|err| {
                 error = Some(err);
-                Token::Ident("<ERROR>")
+                Token { typ: Ident("<ERROR>"), pos: 0 }
             })
         }).collect();
         println!("---------------------");
         println!("{}", text);
         println!("----");
-        println!("{:?}", vec);
+        for token in &vec {
+            println!("{:?}", token);
+        }
         if let Some(err) = error {
             println!("ERROR: {:?}", err);
         }
@@ -163,6 +186,7 @@ mod test {
     #[test]
     fn test_lexer_iter_eq() {
         use super::{Lexer, Token};
+        use super::TokenType::Ident;
 
         let text = "log(3x!!+4)- 5x zy^2^3";
         let lexer = Lexer::new(text);
@@ -170,10 +194,10 @@ mod test {
         let iter = lexer_clone.iter();
 
         let vec1: Vec<_> = lexer.map(|res| {
-            res.unwrap_or_else(|_| { Token::Ident("<ERROR>") })
+            res.unwrap_or_else(|_| { Token { typ: Ident("<ERROR>"), pos: 0 } })
         }).collect();
         let vec2: Vec<_> = iter.map(|res| {
-            res.unwrap_or_else(|_| { Token::Ident("<ERROR>") })
+            res.unwrap_or_else(|_| { Token { typ: Ident("<ERROR>"), pos: 0 } })
         }).collect();
         assert_eq!(vec1, vec2);
     }

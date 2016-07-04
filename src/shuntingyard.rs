@@ -24,6 +24,7 @@ struct ShuntingYard<'a> {
 
 const OPS_BINARY: [char; 5] = ['+', '-', '*', '/', '^'];
 const OPS_PREFIX: [char; 1] = ['-'];
+const OPS_POSTFIX: [char; 1] = ['!'];
 
 fn is_binary(op_char: char) -> bool {
     OPS_BINARY.contains(&op_char)
@@ -31,21 +32,25 @@ fn is_binary(op_char: char) -> bool {
 fn is_prefix(op_char: char) -> bool {
     OPS_PREFIX.contains(&op_char)
 }
+fn is_postfix(op_char: char) -> bool {
+    OPS_POSTFIX.contains(&op_char)
+}
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 enum Assoc { Left, Right }
 
 fn assoc(op: &Op) -> Assoc {
-    if let &Op::Binary(ch, _) = op {
-        match ch {
+    match op {
+        &Op::Binary(ch, _) => match ch {
             '^' => return Assoc::Right,
             _ => {
                 assert!(['+', '-', '*', '/'].contains(&ch), "Unknown operator associativity {}", ch);
                 return Assoc::Left
             }
-        };
+        },
+        &Op::Postfix(..) => Assoc::Left,
+        _ => panic!("Operator {:?} does not have associativity", op)
     }
-    panic!("Operator {:?} does not have associativity", op)
 }
 
 fn prec(op: &Op) -> i32 {
@@ -54,7 +59,8 @@ fn prec(op: &Op) -> i32 {
         &Op::Binary('+', _) | &Op::Binary('-', _) => 1,
         &Op::Binary('*', _) | &Op::Binary('/', _) => 2,
         &Op::Prefix('-', _) => 3,
-        &Op::Binary('^', _) => 4,
+        &Op::Postfix('!', _) => 4,
+        &Op::Binary('^', _) => 5,
         _ => panic!("Unexpected operator {:?}", op),
     }
 }
@@ -93,10 +99,19 @@ impl<'a> ShuntingYard<'a> {
     fn parse_e(&mut self) -> Result<(), ParseError> {
         try!(self.parse_p());
         while let Token { typ: TokenType::OpSingle(ch), pos } = self.next {
-            if !is_binary(ch) { break; }
-            self.push_operator(Op::Binary(ch, pos));
-            try!(self.consume());
-            try!(self.parse_p());
+            if is_binary(ch) {
+                self.push_operator(Op::Binary(ch, pos));
+                try!(self.consume());
+                try!(self.parse_p());
+            } else if is_postfix(ch) {
+                self.push_operator(Op::Postfix(ch, pos));
+                // The postfix operator's sole argument should be ready on the expression stack
+                // after push_operator completes, taking precedence into account.
+                self.pop_operator();
+                try!(self.consume());
+            } else {
+                break;
+            }
         }
         while !is_sentinel(&self.op_stack.last()) {
             self.pop_operator()
@@ -170,9 +185,10 @@ impl<'a> ShuntingYard<'a> {
 ///   https://www.engr.mun.ca/~theo/Misc/exp_parsing.htm
 /// It parses the following grammar:
 ///   E --> P {B P}
-///   P --> v | "(" E ")" | U P
+///   P --> v | "(" E ")" | U P | P V
 ///   B --> "+" | "-" | "*" | "/" | "^"
 ///   U --> "-"
+///   V --> "!"
 pub fn parse(text: &str) -> Result<AstNode, ParseError> {
     let mut lexer = Lexer::new(text);
     let next = try!(lexer.next_token());
@@ -196,7 +212,8 @@ mod test {
 
     #[test]
     fn test() {
-        let text = "(3*x+4)- 5*x+zy^2^3";
+        let text = "(3*x+4)!!- 5*2^x!^2+zy^2^3--5";
+        println!("012345678901234567890123456789");
         println!("{}", text);
         let ast_node = parse(text).unwrap();
         println!("{}", ast_node);

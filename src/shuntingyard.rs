@@ -198,7 +198,9 @@ mod test {
     fn test() {
         let text = "(3*x+4)- 5*x+zy^2^3";
         println!("{}", text);
-        println!("{}", parse(text).unwrap());
+        let ast_node = parse(text).unwrap();
+        println!("{}", ast_node);
+        println!("{:?}", ast_node);
         //parse("log(3x+4)- 5x zy^2^3").unwrap();
     }
 }

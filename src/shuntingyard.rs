@@ -126,16 +126,18 @@ impl<'a> ShuntingYard<'a> {
                 try!(self.consume());
             },
             &Token { typ: TokenType::Ident(s), pos } => {
-                self.exp_stack.push(AstNode::new(Ident(s.to_string()), pos));
                 try!(self.consume());
+                if self.match_starting_parens() {
+                    // Function call
+                    let t = try!(self.parse_parens(pos));
+                    self.exp_stack.push(AstNode::new(Func(s.to_string(), t), pos));
+                } else {
+                    // Identifier
+                    self.exp_stack.push(AstNode::new(Ident(s.to_string()), pos));
+                }
             },
             &Token { typ: TokenType::OpSingle('('), pos } => {
-                try!(self.consume());
-                self.op_stack.push(Op::Sentinel(pos));
-                try!(self.parse_e());
-                try!(self.expect(TokenType::OpSingle(')')));
-                self.op_stack.pop().unwrap();
-                let t = Box::new(self.exp_stack.pop().unwrap());
+                let t = try!(self.parse_parens(pos));
                 self.exp_stack.push(AstNode::new(Parens(t), pos));
             },
             &Token { typ: TokenType::OpSingle(ch), pos } => {
@@ -151,6 +153,20 @@ impl<'a> ShuntingYard<'a> {
             }
         }
         Ok(())
+    }
+
+    fn match_starting_parens(&mut self) -> bool {
+        if let &Token { typ: TokenType::OpSingle('('), pos: _ } = &self.next { true } else { false }
+    }
+
+    fn parse_parens(&mut self, pos: u32) -> Result<Box<AstNode>, ParseError> {
+        assert!(self.match_starting_parens());
+        try!(self.consume());
+        self.op_stack.push(Op::Sentinel(pos));
+        try!(self.parse_e());
+        try!(self.expect(TokenType::OpSingle(')')));
+        self.op_stack.pop().unwrap();
+        Ok(Box::new(self.exp_stack.pop().unwrap()))
     }
 
     fn top_operator(&mut self) -> &Op {
@@ -185,7 +201,7 @@ impl<'a> ShuntingYard<'a> {
 ///   https://www.engr.mun.ca/~theo/Misc/exp_parsing.htm
 /// It parses the following grammar:
 ///   E --> P {B P}
-///   P --> v | "(" E ")" | U P | P V
+///   P --> "(" E ")" | U P | P V | ident "(" P ")" | ident | number
 ///   B --> "+" | "-" | "*" | "/" | "^"
 ///   U --> "-"
 ///   V --> "!"
@@ -212,13 +228,12 @@ mod test {
 
     #[test]
     fn test() {
-        let text = "(3*x+4)!!- 5*2^x!^2+zy^2^3--5";
-        println!("012345678901234567890123456789");
+        let text = "(3*x+4)!!- 5*2^x!^2+log(zy^2^3)--5";
+        println!(".123456789.123456789.123456789.123456789");
         println!("{}", text);
         let ast_node = parse(text).unwrap();
         println!("{}", ast_node);
         println!("{:?}", ast_node);
-        //parse("log(3x+4)- 5x zy^2^3").unwrap();
     }
 }
 

@@ -3,73 +3,66 @@ use ast::AstType::{Number, Ident, Func, Binary, Prefix, Postfix, Parens};
 use error::ParseError;
 use lexer::{Lexer, Token, TokenType};
 
+////////////////////////////////////////////////////////////////////////////////
+// Operators
+
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
-enum Op {
-    Sentinel(u32),
-    Binary(char, u32),
-    Prefix(char, u32),
-    Postfix(char, u32),
-}
-
-fn is_sentinel(op: &Option<&Op>) -> bool {
-    if let &Some(&Op::Sentinel(_)) = op { true } else { false }
-}
-
-struct ShuntingYard<'a> {
-    lexer: Lexer<'a>,
-    next: Token<'a>,
-    op_stack: Vec<Op>,
-    exp_stack: Vec<AstNode>,
-}
-
-const OPS_BINARY: [char; 5] = ['+', '-', '*', '/', '^'];
-const OPS_PREFIX: [char; 1] = ['-'];
-const OPS_POSTFIX: [char; 1] = ['!'];
-
-fn is_binary(op_char: char) -> bool {
-    OPS_BINARY.contains(&op_char)
-}
-fn is_prefix(op_char: char) -> bool {
-    OPS_PREFIX.contains(&op_char)
-}
-fn is_postfix(op_char: char) -> bool {
-    OPS_POSTFIX.contains(&op_char)
+enum OpType {
+    Sentinel,
+    Binary,
+    Prefix,
+    Postfix,
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 enum Assoc { Left, Right }
 
-fn assoc(op: &Op) -> Assoc {
-    match op {
-        &Op::Binary(ch, _) => match ch {
-            '^' => return Assoc::Right,
-            _ => {
-                assert!(['+', '-', '*', '/'].contains(&ch), "Unknown operator associativity {}", ch);
-                return Assoc::Left
-            }
-        },
-        &Op::Postfix(..) => Assoc::Left,
-        _ => panic!("Operator {:?} does not have associativity", op)
+#[derive(Debug)]
+struct Op {
+    ch: char,
+    typ: OpType,
+    prec: u32,
+    assoc: Assoc,
+}
+
+static SENTINEL: Op =
+    Op { ch: '\0', typ: OpType::Sentinel, prec: 0, assoc: Assoc::Left };
+
+static OPS: [Op; 7] = [
+    Op { ch: '+', typ: OpType::Binary,  prec: 1, assoc: Assoc::Left  },
+    Op { ch: '-', typ: OpType::Binary,  prec: 1, assoc: Assoc::Left  },
+    Op { ch: '*', typ: OpType::Binary,  prec: 2, assoc: Assoc::Left  },
+    Op { ch: '/', typ: OpType::Binary,  prec: 2, assoc: Assoc::Left  },
+    Op { ch: '-', typ: OpType::Prefix,  prec: 3, assoc: Assoc::Left  },
+    Op { ch: '!', typ: OpType::Postfix, prec: 4, assoc: Assoc::Left  },
+    Op { ch: '^', typ: OpType::Binary,  prec: 5, assoc: Assoc::Right },
+];
+
+fn is_sentinel(op: Option<&(&Op, u32)>) -> bool {
+    if let Some(&(&Op { typ: OpType::Sentinel, .. }, _)) = op {
+        true
+    } else {
+        false
     }
 }
 
-fn prec(op: &Op) -> i32 {
-    match op {
-        &Op::Sentinel(_) => 0,
-        &Op::Binary('+', _) | &Op::Binary('-', _) => 1,
-        &Op::Binary('*', _) | &Op::Binary('/', _) => 2,
-        &Op::Prefix('-', _) => 3,
-        &Op::Postfix('!', _) => 4,
-        &Op::Binary('^', _) => 5,
-        _ => panic!("Unexpected operator {:?}", op),
-    }
+fn get_op(op_char: char, typ: OpType) -> Option<&'static Op> {
+    OPS.iter().find(move |op| op.ch == op_char && op.typ == typ)
 }
 
 #[inline(always)]
 fn has_greater_prec(op1: &Op, op2: &Op) -> bool {
-    let prec1 = prec(&op1);
-    let prec2 = prec(&op2);
-    prec1 > prec2 || (prec1 == prec2 && assoc(op1) == Assoc::Left)
+    op1.prec > op2.prec || (op1.prec == op2.prec && op1.assoc == Assoc::Left)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Shunting Yard parser
+
+struct ShuntingYard<'a> {
+    lexer: Lexer<'a>,
+    next: Token<'a>,
+    op_stack: Vec<(&'static Op, u32)>, // (operator, position) pair
+    exp_stack: Vec<AstNode>,
 }
 
 impl<'a> ShuntingYard<'a> {
@@ -99,12 +92,12 @@ impl<'a> ShuntingYard<'a> {
     fn parse_e(&mut self) -> Result<(), ParseError> {
         try!(self.parse_p());
         while let Token { typ: TokenType::OpSingle(ch), pos } = self.next {
-            if is_binary(ch) {
-                self.push_operator(Op::Binary(ch, pos));
+            if let Some(op) = get_op(ch, OpType::Binary) {
+                self.push_operator((op, pos));
                 try!(self.consume());
                 try!(self.parse_p());
-            } else if is_postfix(ch) {
-                self.push_operator(Op::Postfix(ch, pos));
+            } else if let Some(op) = get_op(ch, OpType::Postfix) {
+                self.push_operator((op, pos));
                 // The postfix operator's sole argument should be ready on the expression stack
                 // after push_operator completes, taking precedence into account.
                 self.pop_operator();
@@ -113,7 +106,7 @@ impl<'a> ShuntingYard<'a> {
                 break;
             }
         }
-        while !is_sentinel(&self.op_stack.last()) {
+        while !is_sentinel(self.op_stack.last()) {
             self.pop_operator()
         }
         Ok(())
@@ -141,12 +134,13 @@ impl<'a> ShuntingYard<'a> {
                 self.exp_stack.push(AstNode::new(Parens(t), pos));
             },
             &Token { typ: TokenType::OpSingle(ch), pos } => {
-                if !is_prefix(ch) {
+                if let Some(op) = get_op(ch, OpType::Prefix) {
+                    self.push_operator((op, pos));
+                    try!(self.consume());
+                    try!(self.parse_p());
+                } else {
                     return Err(ParseError::Parse(format!("Expected unary operator, but got {:?}", ch)));
                 }
-                self.push_operator(Op::Prefix(ch, pos));
-                try!(self.consume());
-                try!(self.parse_p());
             },
             _ => {
                 return Err(ParseError::Parse(format!("Unexpected token {:?}", self.next)));
@@ -162,36 +156,36 @@ impl<'a> ShuntingYard<'a> {
     fn parse_parens(&mut self, pos: u32) -> Result<Box<AstNode>, ParseError> {
         assert!(self.match_starting_parens());
         try!(self.consume());
-        self.op_stack.push(Op::Sentinel(pos));
+        self.op_stack.push((&SENTINEL, pos));
         try!(self.parse_e());
         try!(self.expect(TokenType::OpSingle(')')));
         self.op_stack.pop().unwrap();
         Ok(Box::new(self.exp_stack.pop().unwrap()))
     }
 
-    fn top_operator(&mut self) -> &Op {
+    fn top_operator(&mut self) -> &(&'static Op, u32) {
         self.op_stack.last().unwrap()
     }
 
     fn pop_operator(&mut self) {
-        let op = self.op_stack.pop().unwrap();
+        let (op, pos) = self.op_stack.pop().unwrap();
         let t = Box::new(self.exp_stack.pop().unwrap());
         match op {
-            Op::Binary(ch, pos) => {
+            &Op { ch, typ: OpType::Binary, .. } => {
                 let t0 = Box::new(self.exp_stack.pop().unwrap());
                 self.exp_stack.push(AstNode::new(Binary(ch, t0, t), pos));
             },
-            Op::Prefix(ch, pos) => self.exp_stack.push(AstNode::new(Prefix(ch, t), pos)),
-            Op::Postfix(ch, pos) => self.exp_stack.push(AstNode::new(Postfix(ch, t), pos)),
-            Op::Sentinel(pos) => panic!("Unexpected Sentinel from position {:?} on operator stack", pos),
+            &Op { ch, typ: OpType::Prefix , .. } => self.exp_stack.push(AstNode::new(Prefix(ch, t), pos)),
+            &Op { ch, typ: OpType::Postfix, .. } => self.exp_stack.push(AstNode::new(Postfix(ch, t), pos)),
+            &Op { typ: OpType::Sentinel, .. } => panic!("Unexpected Sentinel from position {:?} on operator stack", pos),
         }
     }
 
-    fn push_operator(&mut self, op: Op) {
-        while has_greater_prec(self.top_operator(), &op) {
+    fn push_operator(&mut self, op_pos: (&'static Op, u32)) {
+        while has_greater_prec(self.top_operator().0, op_pos.0) {
            self.pop_operator();
         }
-        self.op_stack.push(op);
+        self.op_stack.push(op_pos);
     }
 }
 
@@ -213,7 +207,7 @@ pub fn parse(text: &str) -> Result<AstNode, ParseError> {
         next: next,
         op_stack: {
             let mut op_stack = Vec::new();
-            op_stack.push(Op::Sentinel(u32::max_value()));
+            op_stack.push((&SENTINEL, 0));
             op_stack
         },
         exp_stack: Vec::new(),

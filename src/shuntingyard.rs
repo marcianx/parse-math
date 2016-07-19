@@ -52,7 +52,9 @@ fn get_op(op_char: char, typ: OpType) -> Option<&'static Op> {
 
 #[inline(always)]
 fn has_greater_prec(op1: &Op, op2: &Op) -> bool {
-    op1.prec > op2.prec || (op1.prec == op2.prec && op1.assoc == Assoc::Left)
+    op2.typ != OpType::Prefix && (
+        op1.prec > op2.prec ||
+        (op1.prec == op2.prec && op1.typ == OpType::Binary && op1.assoc == Assoc::Left))
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -222,7 +224,7 @@ mod test {
 
     #[test]
     fn test() {
-        let text = "(3*x+4)!!- 5*2^x!^2+log(zy^2^3)--5";
+        let text = "10^-10 + (3*x+4)!!- 5*2^x!^2+log(zy^2^3)--5";
         println!(".123456789.123456789.123456789.123456789");
         println!("{}", text);
         let ast_node = parse(text).unwrap();

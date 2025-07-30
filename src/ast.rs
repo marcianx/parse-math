@@ -23,8 +23,12 @@ impl AstNode {
         AstNode { typ: typ, pos: pos }
     }
 
-    pub fn as_ascii_math(&self) -> AsciiMathFmt { AsciiMathFmt(self) }
-    pub fn as_tree(&self) -> TreeFmt { TreeFmt(self) }
+    pub fn as_ascii_math(&self) -> AsciiMathFmt {
+        AsciiMathFmt(self)
+    }
+    pub fn as_tree(&self) -> TreeFmt {
+        TreeFmt(self)
+    }
 }
 
 impl Debug for AstNode {
@@ -70,7 +74,12 @@ impl<'a> TreeFmt<'a> {
         const INDENT: usize = 2;
 
         // Output the line position and the indent.
-        try!(f.write_fmt(format_args!("{:3}:{:width$} ", self.0.pos, "", width=indent)));
+        try!(f.write_fmt(format_args!(
+            "{:3}:{:width$} ",
+            self.0.pos,
+            "",
+            width = indent
+        )));
         match &self.0.typ {
             &Number(n) => f.write_fmt(format_args!("{}\n", n)),
             &Ident(ref s) => f.write_fmt(format_args!("{}\n", s)),

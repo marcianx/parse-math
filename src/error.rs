@@ -1,7 +1,7 @@
-use std::num::ParseFloatError;
 use std::convert;
 use std::error;
 use std::fmt;
+use std::num::ParseFloatError;
 
 #[derive(Debug)]
 pub enum ParseError {
@@ -17,13 +17,13 @@ impl fmt::Display for ParseError {
 }
 
 impl error::Error for ParseError {
-  fn description(&self) -> &str {
-      match self {
-          &ParseError::Lex(ref message) => message,
-          &ParseError::Parse(ref message) => message,
-          &ParseError::Float(ref err) => err.description(),
-      }
-  }
+    fn description(&self) -> &str {
+        match self {
+            &ParseError::Lex(ref message) => message,
+            &ParseError::Parse(ref message) => message,
+            &ParseError::Float(ref err) => err.description(),
+        }
+    }
 }
 
 impl convert::From<ParseFloatError> for ParseError {
@@ -31,4 +31,3 @@ impl convert::From<ParseFloatError> for ParseError {
         ParseError::Float(err)
     }
 }
-

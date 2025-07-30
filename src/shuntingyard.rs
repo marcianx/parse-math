@@ -1,5 +1,5 @@
 use ast::AstNode;
-use ast::AstType::{Number, Ident, Func, Binary, Prefix, Postfix, Parens};
+use ast::AstType::{Binary, Func, Ident, Number, Parens, Postfix, Prefix};
 use error::ParseError;
 use lexer::{Lexer, Token, TokenType};
 
@@ -15,7 +15,10 @@ enum OpType {
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
-enum Assoc { Left, Right }
+enum Assoc {
+    Left,
+    Right,
+}
 
 #[derive(Debug)]
 struct Op {
@@ -25,21 +28,67 @@ struct Op {
     assoc: Assoc,
 }
 
-static SENTINEL: Op =
-    Op { ch: '\0', typ: OpType::Sentinel, prec: 0, assoc: Assoc::Left };
+static SENTINEL: Op = Op {
+    ch: '\0',
+    typ: OpType::Sentinel,
+    prec: 0,
+    assoc: Assoc::Left,
+};
 
 static OPS: [Op; 7] = [
-    Op { ch: '+', typ: OpType::Binary,  prec: 1, assoc: Assoc::Left  },
-    Op { ch: '-', typ: OpType::Binary,  prec: 1, assoc: Assoc::Left  },
-    Op { ch: '*', typ: OpType::Binary,  prec: 2, assoc: Assoc::Left  },
-    Op { ch: '/', typ: OpType::Binary,  prec: 2, assoc: Assoc::Left  },
-    Op { ch: '-', typ: OpType::Prefix,  prec: 3, assoc: Assoc::Left  },
-    Op { ch: '!', typ: OpType::Postfix, prec: 4, assoc: Assoc::Left  },
-    Op { ch: '^', typ: OpType::Binary,  prec: 5, assoc: Assoc::Right },
+    Op {
+        ch: '+',
+        typ: OpType::Binary,
+        prec: 1,
+        assoc: Assoc::Left,
+    },
+    Op {
+        ch: '-',
+        typ: OpType::Binary,
+        prec: 1,
+        assoc: Assoc::Left,
+    },
+    Op {
+        ch: '*',
+        typ: OpType::Binary,
+        prec: 2,
+        assoc: Assoc::Left,
+    },
+    Op {
+        ch: '/',
+        typ: OpType::Binary,
+        prec: 2,
+        assoc: Assoc::Left,
+    },
+    Op {
+        ch: '-',
+        typ: OpType::Prefix,
+        prec: 3,
+        assoc: Assoc::Left,
+    },
+    Op {
+        ch: '!',
+        typ: OpType::Postfix,
+        prec: 4,
+        assoc: Assoc::Left,
+    },
+    Op {
+        ch: '^',
+        typ: OpType::Binary,
+        prec: 5,
+        assoc: Assoc::Right,
+    },
 ];
 
 fn is_sentinel(op: Option<&(&Op, u32)>) -> bool {
-    if let Some(&(&Op { typ: OpType::Sentinel, .. }, _)) = op {
+    if let Some(&(
+        &Op {
+            typ: OpType::Sentinel,
+            ..
+        },
+        _,
+    )) = op
+    {
         true
     } else {
         false
@@ -52,9 +101,9 @@ fn get_op(op_char: char, typ: OpType) -> Option<&'static Op> {
 
 #[inline(always)]
 fn has_greater_prec(op1: &Op, op2: &Op) -> bool {
-    op2.typ != OpType::Prefix && (
-        op1.prec > op2.prec ||
-        (op1.prec == op2.prec && op1.typ == OpType::Binary && op1.assoc == Assoc::Left))
+    op2.typ != OpType::Prefix
+        && (op1.prec > op2.prec
+            || (op1.prec == op2.prec && op1.typ == OpType::Binary && op1.assoc == Assoc::Left))
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -86,14 +135,20 @@ impl<'a> ShuntingYard<'a> {
             try!(self.consume());
             Ok(())
         } else {
-            Err(ParseError::Parse(format!("Expected {:?} of expression, but got {:?} at position {:?}",
-                                          token_type, self.next.typ, self.next.pos)))
+            Err(ParseError::Parse(format!(
+                "Expected {:?} of expression, but got {:?} at position {:?}",
+                token_type, self.next.typ, self.next.pos
+            )))
         }
     }
 
     fn parse_e(&mut self) -> Result<(), ParseError> {
         try!(self.parse_p());
-        while let Token { typ: TokenType::OpSingle(ch), pos } = self.next {
+        while let Token {
+            typ: TokenType::OpSingle(ch),
+            pos,
+        } = self.next
+        {
             if let Some(op) = get_op(ch, OpType::Binary) {
                 self.push_operator((op, pos));
                 try!(self.consume());
@@ -116,43 +171,70 @@ impl<'a> ShuntingYard<'a> {
 
     fn parse_p(&mut self) -> Result<(), ParseError> {
         match &self.next {
-            &Token { typ: TokenType::Number(v), pos } => {
+            &Token {
+                typ: TokenType::Number(v),
+                pos,
+            } => {
                 self.exp_stack.push(AstNode::new(Number(v), pos));
                 try!(self.consume());
-            },
-            &Token { typ: TokenType::Ident(s), pos } => {
+            }
+            &Token {
+                typ: TokenType::Ident(s),
+                pos,
+            } => {
                 try!(self.consume());
                 if self.match_starting_parens() {
                     // Function call
                     let t = try!(self.parse_parens(pos));
-                    self.exp_stack.push(AstNode::new(Func(s.to_string(), t), pos));
+                    self.exp_stack
+                        .push(AstNode::new(Func(s.to_string(), t), pos));
                 } else {
                     // Identifier
                     self.exp_stack.push(AstNode::new(Ident(s.to_string()), pos));
                 }
-            },
-            &Token { typ: TokenType::OpSingle('('), pos } => {
+            }
+            &Token {
+                typ: TokenType::OpSingle('('),
+                pos,
+            } => {
                 let t = try!(self.parse_parens(pos));
                 self.exp_stack.push(AstNode::new(Parens(t), pos));
-            },
-            &Token { typ: TokenType::OpSingle(ch), pos } => {
+            }
+            &Token {
+                typ: TokenType::OpSingle(ch),
+                pos,
+            } => {
                 if let Some(op) = get_op(ch, OpType::Prefix) {
                     self.push_operator((op, pos));
                     try!(self.consume());
                     try!(self.parse_p());
                 } else {
-                    return Err(ParseError::Parse(format!("Expected unary operator, but got {:?}", ch)));
+                    return Err(ParseError::Parse(format!(
+                        "Expected unary operator, but got {:?}",
+                        ch
+                    )));
                 }
-            },
+            }
             _ => {
-                return Err(ParseError::Parse(format!("Unexpected token {:?}", self.next)));
+                return Err(ParseError::Parse(format!(
+                    "Unexpected token {:?}",
+                    self.next
+                )));
             }
         }
         Ok(())
     }
 
     fn match_starting_parens(&mut self) -> bool {
-        if let &Token { typ: TokenType::OpSingle('('), pos: _ } = &self.next { true } else { false }
+        if let &Token {
+            typ: TokenType::OpSingle('('),
+            pos: _,
+        } = &self.next
+        {
+            true
+        } else {
+            false
+        }
     }
 
     fn parse_parens(&mut self, pos: u32) -> Result<Box<AstNode>, ParseError> {
@@ -173,19 +255,37 @@ impl<'a> ShuntingYard<'a> {
         let (op, pos) = self.op_stack.pop().unwrap();
         let t = Box::new(self.exp_stack.pop().unwrap());
         match op {
-            &Op { ch, typ: OpType::Binary, .. } => {
+            &Op {
+                ch,
+                typ: OpType::Binary,
+                ..
+            } => {
                 let t0 = Box::new(self.exp_stack.pop().unwrap());
                 self.exp_stack.push(AstNode::new(Binary(ch, t0, t), pos));
-            },
-            &Op { ch, typ: OpType::Prefix , .. } => self.exp_stack.push(AstNode::new(Prefix(ch, t), pos)),
-            &Op { ch, typ: OpType::Postfix, .. } => self.exp_stack.push(AstNode::new(Postfix(ch, t), pos)),
-            &Op { typ: OpType::Sentinel, .. } => panic!("Unexpected Sentinel from position {:?} on operator stack", pos),
+            }
+            &Op {
+                ch,
+                typ: OpType::Prefix,
+                ..
+            } => self.exp_stack.push(AstNode::new(Prefix(ch, t), pos)),
+            &Op {
+                ch,
+                typ: OpType::Postfix,
+                ..
+            } => self.exp_stack.push(AstNode::new(Postfix(ch, t), pos)),
+            &Op {
+                typ: OpType::Sentinel,
+                ..
+            } => panic!(
+                "Unexpected Sentinel from position {:?} on operator stack",
+                pos
+            ),
         }
     }
 
     fn push_operator(&mut self, op_pos: (&'static Op, u32)) {
         while has_greater_prec(self.top_operator().0, op_pos.0) {
-           self.pop_operator();
+            self.pop_operator();
         }
         self.op_stack.push(op_pos);
     }
@@ -213,7 +313,8 @@ pub fn parse(text: &str) -> Result<AstNode, ParseError> {
             op_stack
         },
         exp_stack: Vec::new(),
-    }.parse()
+    }
+    .parse()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -232,4 +333,3 @@ mod test {
         println!("{:?}", ast_node);
     }
 }
-

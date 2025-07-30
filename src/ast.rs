@@ -74,34 +74,34 @@ impl<'a> TreeFmt<'a> {
         const INDENT: usize = 2;
 
         // Output the line position and the indent.
-        try!(f.write_fmt(format_args!(
+        f.write_fmt(format_args!(
             "{:3}:{:width$} ",
             self.0.pos,
             "",
-            width = indent
-        )));
+            width = indent,
+        ))?;
         match &self.0.typ {
             &Number(n) => f.write_fmt(format_args!("{}\n", n)),
             &Ident(ref s) => f.write_fmt(format_args!("{}\n", s)),
             &Func(ref s, ref arg) => {
-                try!(f.write_fmt(format_args!("{}()\n", s)));
+                f.write_fmt(format_args!("{}()\n", s))?;
                 arg.as_tree().format(f, indent + INDENT)
             }
             &Binary(ch, ref arg1, ref arg2) => {
-                try!(f.write_fmt(format_args!("{}\n", ch)));
-                try!(arg1.as_tree().format(f, indent + INDENT));
+                f.write_fmt(format_args!("{}\n", ch))?;
+                arg1.as_tree().format(f, indent + INDENT)?;
                 arg2.as_tree().format(f, indent + INDENT)
             }
             &Prefix(ch, ref arg) => {
-                try!(f.write_fmt(format_args!("{} (prefix)\n", ch)));
+                f.write_fmt(format_args!("{} (prefix)\n", ch))?;
                 arg.as_tree().format(f, indent + INDENT)
             }
             &Postfix(ch, ref arg) => {
-                try!(f.write_fmt(format_args!("{} (postfix)\n", ch)));
+                f.write_fmt(format_args!("{} (postfix)\n", ch))?;
                 arg.as_tree().format(f, indent + INDENT)
             }
             &Parens(ref arg) => {
-                try!(Display::fmt("()\n", f));
+                Display::fmt("()\n", f)?;
                 arg.as_tree().format(f, indent + INDENT)
             }
         }

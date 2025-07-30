@@ -1,7 +1,7 @@
-use ast::AstNode;
-use ast::AstType::{Binary, Func, Ident, Number, Parens, Postfix, Prefix};
-use error::ParseError;
-use lexer::{Lexer, Token, TokenType};
+use crate::ast::AstNode;
+use crate::ast::AstType::{Binary, Func, Ident, Number, Parens, Postfix, Prefix};
+use crate::error::ParseError;
+use crate::lexer::{Lexer, Token, TokenType};
 
 ////////////////////////////////////////////////////////////////////////////////
 // Operators
@@ -118,21 +118,21 @@ struct ShuntingYard<'a> {
 
 impl<'a> ShuntingYard<'a> {
     fn parse(&mut self) -> Result<AstNode, ParseError> {
-        try!(self.parse_e());
-        try!(self.expect(TokenType::End));
+        self.parse_e()?;
+        self.expect(TokenType::End)?;
         assert_eq!(self.exp_stack.len(), 1);
         assert_eq!(self.op_stack.len(), 1);
         Ok::<AstNode, ParseError>(self.exp_stack.pop().unwrap())
     }
 
     fn consume(&mut self) -> Result<(), ParseError> {
-        self.next = try!(self.lexer.next_token());
+        self.next = self.lexer.next_token()?;
         Ok(())
     }
 
     fn expect(&mut self, token_type: TokenType<'a>) -> Result<(), ParseError> {
         if self.next == token_type {
-            try!(self.consume());
+            self.consume()?;
             Ok(())
         } else {
             Err(ParseError::Parse(format!(
@@ -143,7 +143,7 @@ impl<'a> ShuntingYard<'a> {
     }
 
     fn parse_e(&mut self) -> Result<(), ParseError> {
-        try!(self.parse_p());
+        self.parse_p()?;
         while let Token {
             typ: TokenType::OpSingle(ch),
             pos,
@@ -151,14 +151,14 @@ impl<'a> ShuntingYard<'a> {
         {
             if let Some(op) = get_op(ch, OpType::Binary) {
                 self.push_operator((op, pos));
-                try!(self.consume());
-                try!(self.parse_p());
+                self.consume()?;
+                self.parse_p()?;
             } else if let Some(op) = get_op(ch, OpType::Postfix) {
                 self.push_operator((op, pos));
                 // The postfix operator's sole argument should be ready on the expression stack
                 // after push_operator completes, taking precedence into account.
                 self.pop_operator();
-                try!(self.consume());
+                self.consume()?;
             } else {
                 break;
             }
@@ -176,16 +176,16 @@ impl<'a> ShuntingYard<'a> {
                 pos,
             } => {
                 self.exp_stack.push(AstNode::new(Number(v), pos));
-                try!(self.consume());
+                self.consume()?;
             }
             &Token {
                 typ: TokenType::Ident(s),
                 pos,
             } => {
-                try!(self.consume());
+                self.consume()?;
                 if self.match_starting_parens() {
                     // Function call
-                    let t = try!(self.parse_parens(pos));
+                    let t = self.parse_parens(pos)?;
                     self.exp_stack
                         .push(AstNode::new(Func(s.to_string(), t), pos));
                 } else {
@@ -197,7 +197,7 @@ impl<'a> ShuntingYard<'a> {
                 typ: TokenType::OpSingle('('),
                 pos,
             } => {
-                let t = try!(self.parse_parens(pos));
+                let t = self.parse_parens(pos)?;
                 self.exp_stack.push(AstNode::new(Parens(t), pos));
             }
             &Token {
@@ -206,8 +206,8 @@ impl<'a> ShuntingYard<'a> {
             } => {
                 if let Some(op) = get_op(ch, OpType::Prefix) {
                     self.push_operator((op, pos));
-                    try!(self.consume());
-                    try!(self.parse_p());
+                    self.consume()?;
+                    self.parse_p()?;
                 } else {
                     return Err(ParseError::Parse(format!(
                         "Expected unary operator, but got {:?}",
@@ -239,10 +239,10 @@ impl<'a> ShuntingYard<'a> {
 
     fn parse_parens(&mut self, pos: u32) -> Result<Box<AstNode>, ParseError> {
         assert!(self.match_starting_parens());
-        try!(self.consume());
+        self.consume()?;
         self.op_stack.push((&SENTINEL, pos));
-        try!(self.parse_e());
-        try!(self.expect(TokenType::OpSingle(')')));
+        self.parse_e()?;
+        self.expect(TokenType::OpSingle(')'))?;
         self.op_stack.pop().unwrap();
         Ok(Box::new(self.exp_stack.pop().unwrap()))
     }
@@ -303,7 +303,7 @@ impl<'a> ShuntingYard<'a> {
 ///   V --> "!"
 pub fn parse(text: &str) -> Result<AstNode, ParseError> {
     let mut lexer = Lexer::new(text);
-    let next = try!(lexer.next_token());
+    let next = lexer.next_token()?;
     ShuntingYard {
         lexer: lexer,
         next: next,

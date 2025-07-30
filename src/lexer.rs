@@ -3,7 +3,7 @@ use std::error::Error as StdError; // for .description()
 use std::iter;
 use std::str::FromStr;
 
-use error::ParseError;
+use crate::error::ParseError;
 
 // IMPORTANT: This will not work performantly if it's called from any thread different than its
 // first invocation (since Regex optimizes for the first thread).
@@ -120,7 +120,7 @@ impl<'a> Lexer<'a> {
             Ok(token)
         } else if let Some((0, n)) = REGEX_NUMBER.find(self.text) {
             let token = Token {
-                typ: Number(try!(FromStr::from_str(&self.text[..n]))),
+                typ: Number(FromStr::from_str(&self.text[..n])?),
                 pos: self.pos,
             };
             self.text = &self.text[n..];

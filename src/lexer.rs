@@ -95,7 +95,7 @@ impl<'a> Lexer<'a> {
                         return Ok(Token {
                             typ: End,
                             pos: self.pos,
-                        })
+                        });
                     }
                     Some(ch) => ch,
                 };
@@ -118,7 +118,8 @@ impl<'a> Lexer<'a> {
             self.text = &self.text[1..];
             self.pos += 1;
             Ok(token)
-        } else if let Some((0, n)) = REGEX_NUMBER.find(self.text) {
+        } else if let Some(m) = REGEX_NUMBER.find_at(self.text, 0) {
+            let n = m.end();
             let token = Token {
                 typ: Number(FromStr::from_str(&self.text[..n])?),
                 pos: self.pos,
@@ -126,7 +127,8 @@ impl<'a> Lexer<'a> {
             self.text = &self.text[n..];
             self.pos += n as u32;
             Ok(token)
-        } else if let Some((0, n)) = REGEX_IDENT.find(self.text) {
+        } else if let Some(m) = REGEX_IDENT.find_at(self.text, 0) {
+            let n = m.end();
             let token = Token {
                 typ: Ident(&self.text[..n]),
                 pos: self.pos,

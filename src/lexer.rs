@@ -1,5 +1,4 @@
 use regex::Regex;
-use std::error::Error as StdError; // for .description()
 use std::iter;
 use std::str::FromStr;
 
@@ -76,9 +75,7 @@ impl<'a> Lexer<'a> {
         } else {
             let res = self.next_token_();
             if let Err(ref err) = res {
-                let mut msg = "Errored previously: ".to_owned();
-                msg.push_str(err.description());
-                self.error = Some(msg);
+                self.error = Some(format!("Errored previously: {}", err));
             }
             res
         }

@@ -1,33 +1,13 @@
-use std::convert;
-use std::error;
-use std::fmt;
 use std::num::ParseFloatError;
+use thiserror::Error;
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum ParseError {
+    #[error("{0}")]
     Lex(String),
+    #[error("{0}")]
     Parse(String),
-    Float(ParseFloatError),
+    #[error("{0}")]
+    Float(#[from] ParseFloatError),
 }
 
-impl fmt::Display for ParseError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        error::Error::description(self).fmt(f)
-    }
-}
-
-impl error::Error for ParseError {
-    fn description(&self) -> &str {
-        match self {
-            &ParseError::Lex(ref message) => message,
-            &ParseError::Parse(ref message) => message,
-            &ParseError::Float(ref err) => err.description(),
-        }
-    }
-}
-
-impl convert::From<ParseFloatError> for ParseError {
-    fn from(err: ParseFloatError) -> Self {
-        ParseError::Float(err)
-    }
-}
